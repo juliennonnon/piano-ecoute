@@ -14,6 +14,7 @@
   color-scheme:dark;
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px}
@@ -84,7 +85,7 @@ input[type=range]{accent-color:var(--accent);width:90px}
       <div class="row">
         <span class="pill" id="heard">Entendu : –</span>
         <label class="mic">Micro <span class="meter"><i id="lvl"></i></span></label>
-        <label class="mic">Sensibilité <input id="sens" type="range" min="1" max="10" value="6"></label>
+        <label class="mic">Sensibilité <input id="sens" type="range" min="1" max="10" value="8"></label>
         <button id="demo">▶ Écouter</button>
       </div>
     </div>
@@ -147,15 +148,15 @@ async function startMic(){
   try{
     const s=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
     const a=ctx();analyser=a.createAnalyser();analyser.fftSize=2048;buf=new Float32Array(analyser.fftSize);
-    a.createMediaStreamSource(s).connect(analyser);micOn=true;return true;
+    const gn=a.createGain();gn.gain.value=4;a.createMediaStreamSource(s).connect(gn).connect(analyser);micOn=true;return true;
   }catch(e){return false}
 }
 // autocorrélation
 function detect(){
   analyser.getFloatTimeDomainData(buf);
   let rms=0;for(const v of buf)rms+=v*v;rms=Math.sqrt(rms/buf.length);
-  const thr=0.002+(11-+document.getElementById('sens').value)*0.004;
-  document.getElementById('lvl').style.width=Math.min(100,rms*600)+'%';
+  const thr=0.03*Math.pow(0.62,+document.getElementById('sens').value);
+  document.getElementById('lvl').style.width=Math.min(100,rms*2500)+'%';
   if(rms<thr)return{rms,midi:null};
   const N=buf.length,sr=ac.sampleRate,minL=Math.floor(sr/1100),maxL=Math.floor(sr/70);
   let best=-1,bl=0,c=new Float32Array(maxL+2);
@@ -164,7 +165,7 @@ function detect(){
   for(let l=minL+1;l<=maxL;l++){if(c[l]>c[l-1]&&c[l]>=c[l+1]&&c[l]>best){best=c[l];bl=l}}
   // premier pic suffisamment haut (évite les erreurs d'octave)
   for(let l=minL+1;l<=maxL;l++){if(c[l]>c[l-1]&&c[l]>=c[l+1]&&c[l]>best*0.9){bl=l;break}}
-  if(!bl||best/e0<0.3)return{rms,midi:null};
+  if(!bl||best/e0<0.2)return{rms,midi:null};
   const a=c[bl-1],b=c[bl],d=c[bl+1],sh=(a-d)/(2*(a-2*b+d))||0;
   const f=sr/(bl+sh);return{rms,midi:Math.round(69+12*Math.log2(f/440))};
 }
